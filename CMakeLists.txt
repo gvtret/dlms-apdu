@@ -8,12 +8,15 @@ option(DLMS_BUILD_TESTS "Build GoogleTest tests" ON)
 option(DLMS_BUILD_C_API "Build stable C ABI wrapper" ON)
 option(DLMS_USE_SYSTEM_GTEST "Use system-installed GoogleTest" OFF)
 
+set(DLMS_APDU_HAS_CODEC_API ON CACHE BOOL "dlms-apdu exposes the APDU codec API" FORCE)
+
 add_library(dlms_apdu
   src/apdu/apdu_error.cpp
   src/apdu/apdu_reader.cpp
   src/apdu/apdu_writer.cpp
   src/apdu/ber.cpp
   src/apdu/axdr.cpp
+  src/apdu/cosem_descriptor.cpp
   src/apdu/data.cpp
   src/apdu/initiate.cpp
   src/apdu/acse.cpp
