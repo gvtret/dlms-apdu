@@ -17,12 +17,27 @@ struct CosemAttributeDescriptor
   std::uint8_t attributeId;
 };
 
+struct CosemMethodDescriptor
+{
+  std::uint16_t classId;
+  std::uint8_t logicalName[6];
+  std::uint8_t methodId;
+};
+
 ApduStatus DecodeCosemAttributeDescriptor(
   ApduReader& reader,
   CosemAttributeDescriptor& output);
 
 ApduStatus EncodeCosemAttributeDescriptor(
   const CosemAttributeDescriptor& input,
+  ApduWriter& writer);
+
+ApduStatus DecodeCosemMethodDescriptor(
+  ApduReader& reader,
+  CosemMethodDescriptor& output);
+
+ApduStatus EncodeCosemMethodDescriptor(
+  const CosemMethodDescriptor& input,
   ApduWriter& writer);
 
 } // namespace apdu

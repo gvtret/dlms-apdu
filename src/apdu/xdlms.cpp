@@ -10,7 +10,11 @@ namespace {
 constexpr std::uint8_t kInitiateRequestTag = 0x01;
 constexpr std::uint8_t kInitiateResponseTag = 0x08;
 constexpr std::uint8_t kGetRequestTag = 0xC0;
+constexpr std::uint8_t kSetRequestTag = 0xC1;
+constexpr std::uint8_t kActionRequestTag = 0xC3;
 constexpr std::uint8_t kGetResponseTag = 0xC4;
+constexpr std::uint8_t kSetResponseTag = 0xC5;
+constexpr std::uint8_t kActionResponseTag = 0xC7;
 
 ApduStatus WriteVectorResult(
   ApduStatus status,
@@ -23,6 +27,56 @@ ApduStatus WriteVectorResult(
   }
   output.assign(buffer, buffer + writtenSize);
   return ApduStatus::Ok;
+}
+
+bool IsGetRequestChoice(GetRequestChoice choice)
+{
+  return choice == GetRequestChoice::Normal ||
+    choice == GetRequestChoice::Next ||
+    choice == GetRequestChoice::WithList;
+}
+
+bool IsGetResponseChoice(GetResponseChoice choice)
+{
+  return choice == GetResponseChoice::Normal ||
+    choice == GetResponseChoice::WithDataBlock ||
+    choice == GetResponseChoice::WithList;
+}
+
+bool IsSetRequestChoice(SetRequestChoice choice)
+{
+  return choice == SetRequestChoice::Normal ||
+    choice == SetRequestChoice::WithFirstDataBlock ||
+    choice == SetRequestChoice::WithDataBlock ||
+    choice == SetRequestChoice::WithList ||
+    choice == SetRequestChoice::WithListAndFirstDataBlock;
+}
+
+bool IsSetResponseChoice(SetResponseChoice choice)
+{
+  return choice == SetResponseChoice::Normal ||
+    choice == SetResponseChoice::DataBlock ||
+    choice == SetResponseChoice::LastDataBlock ||
+    choice == SetResponseChoice::LastDataBlockWithList ||
+    choice == SetResponseChoice::WithList;
+}
+
+bool IsActionRequestChoice(ActionRequestChoice choice)
+{
+  return choice == ActionRequestChoice::Normal ||
+    choice == ActionRequestChoice::NextPblock ||
+    choice == ActionRequestChoice::WithList ||
+    choice == ActionRequestChoice::WithFirstPblock ||
+    choice == ActionRequestChoice::WithListAndFirstPblock ||
+    choice == ActionRequestChoice::WithPblock;
+}
+
+bool IsActionResponseChoice(ActionResponseChoice choice)
+{
+  return choice == ActionResponseChoice::Normal ||
+    choice == ActionResponseChoice::WithPblock ||
+    choice == ActionResponseChoice::WithList ||
+    choice == ActionResponseChoice::NextPblock;
 }
 
 } // namespace
@@ -49,6 +103,16 @@ XdlmsApdu::XdlmsApdu()
   , initiateResponse()
   , getRequest()
   , getResponse()
+  , setRequest()
+  , setResponse()
+  , actionRequest()
+  , actionResponse()
+  , getRequestAny()
+  , getResponseAny()
+  , setRequestAny()
+  , setResponseAny()
+  , actionRequestAny()
+  , actionResponseAny()
 {
 }
 
@@ -58,6 +122,16 @@ XdlmsApdu::XdlmsApdu(const InitiateRequest& request)
   , initiateResponse()
   , getRequest()
   , getResponse()
+  , setRequest()
+  , setResponse()
+  , actionRequest()
+  , actionResponse()
+  , getRequestAny()
+  , getResponseAny()
+  , setRequestAny()
+  , setResponseAny()
+  , actionRequestAny()
+  , actionResponseAny()
 {
 }
 
@@ -76,6 +150,10 @@ XdlmsApdu MakeGetRequestNormal(
   }
   apdu.getRequest.descriptor.attributeId = attributeId;
   apdu.getRequest.hasSelectiveAccess = false;
+  apdu.getRequestAny.choice = GetRequestChoice::Normal;
+  apdu.getRequestAny.invokeIdAndPriority = invokeIdAndPriority;
+  apdu.getRequestAny.normal.descriptor = apdu.getRequest.descriptor;
+  apdu.getRequestAny.normal.hasSelection = false;
   return apdu;
 }
 
@@ -100,11 +178,101 @@ ApduStatus DecodeXdlmsApdu(
 
     case kGetRequestTag:
       output.kind = XdlmsApduKind::GetRequest;
-      return DecodeGetRequestNormal(input, inputSize, output.getRequest);
+      {
+        ApduStatus status = DecodeGetRequest(input, inputSize, 8, output.getRequestAny);
+        if (status != ApduStatus::Ok) {
+          return status;
+        }
+        if (output.getRequestAny.choice == GetRequestChoice::Normal) {
+          output.getRequest.invokeIdAndPriority = output.getRequestAny.invokeIdAndPriority;
+          output.getRequest.descriptor = output.getRequestAny.normal.descriptor;
+          output.getRequest.hasSelectiveAccess = output.getRequestAny.normal.hasSelection;
+          output.getRequest.selectiveAccess = output.getRequestAny.normal.selection;
+        }
+        return ApduStatus::Ok;
+      }
 
     case kGetResponseTag:
       output.kind = XdlmsApduKind::GetResponse;
-      return DecodeGetResponseNormal(input, inputSize, 8, output.getResponse);
+      {
+        ApduStatus status = DecodeGetResponse(input, inputSize, 8, output.getResponseAny);
+        if (status != ApduStatus::Ok) {
+          return status;
+        }
+        if (output.getResponseAny.choice == GetResponseChoice::Normal) {
+          output.getResponse.invokeIdAndPriority = output.getResponseAny.invokeIdAndPriority;
+          output.getResponse.resultChoice = output.getResponseAny.result.choice;
+          output.getResponse.data = output.getResponseAny.result.data;
+          output.getResponse.dataAccessError = output.getResponseAny.result.dataAccessError;
+        }
+        return ApduStatus::Ok;
+      }
+
+    case kSetRequestTag:
+      output.kind = XdlmsApduKind::SetRequest;
+      {
+        ApduStatus status = DecodeSetRequest(input, inputSize, 8, output.setRequestAny);
+        if (status != ApduStatus::Ok) {
+          return status;
+        }
+        if (output.setRequestAny.choice == SetRequestChoice::Normal) {
+          output.setRequest.invokeIdAndPriority = output.setRequestAny.invokeIdAndPriority;
+          output.setRequest.descriptor = output.setRequestAny.normal.descriptor;
+          output.setRequest.hasSelectiveAccess = output.setRequestAny.normal.hasSelection;
+          output.setRequest.selectiveAccess = output.setRequestAny.normal.selection;
+          output.setRequest.data = output.setRequestAny.data;
+        }
+        return ApduStatus::Ok;
+      }
+
+    case kSetResponseTag:
+      output.kind = XdlmsApduKind::SetResponse;
+      {
+        ApduStatus status = DecodeSetResponse(input, inputSize, output.setResponseAny);
+        if (status != ApduStatus::Ok) {
+          return status;
+        }
+        if (output.setResponseAny.choice == SetResponseChoice::Normal) {
+          output.setResponse.invokeIdAndPriority = output.setResponseAny.invokeIdAndPriority;
+          output.setResponse.result = output.setResponseAny.result;
+        }
+        return ApduStatus::Ok;
+      }
+
+    case kActionRequestTag:
+      output.kind = XdlmsApduKind::ActionRequest;
+      {
+        ApduStatus status = DecodeActionRequest(input, inputSize, 8, output.actionRequestAny);
+        if (status != ApduStatus::Ok) {
+          return status;
+        }
+        if (output.actionRequestAny.choice == ActionRequestChoice::Normal) {
+          output.actionRequest.invokeIdAndPriority = output.actionRequestAny.invokeIdAndPriority;
+          output.actionRequest.descriptor = output.actionRequestAny.normal.descriptor;
+          output.actionRequest.hasInvocationParameter =
+            output.actionRequestAny.normal.hasInvocationParameter;
+          output.actionRequest.invocationParameter =
+            output.actionRequestAny.normal.invocationParameter;
+        }
+        return ApduStatus::Ok;
+      }
+
+    case kActionResponseTag:
+      output.kind = XdlmsApduKind::ActionResponse;
+      {
+        ApduStatus status = DecodeActionResponse(input, inputSize, 8, output.actionResponseAny);
+        if (status != ApduStatus::Ok) {
+          return status;
+        }
+        if (output.actionResponseAny.choice == ActionResponseChoice::Normal) {
+          output.actionResponse.invokeIdAndPriority = output.actionResponseAny.invokeIdAndPriority;
+          output.actionResponse.result = output.actionResponseAny.normal.result;
+          output.actionResponse.hasReturnParameter =
+            output.actionResponseAny.normal.hasReturnParameter;
+          output.actionResponse.returnParameter = output.actionResponseAny.normal.returnParameter;
+        }
+        return ApduStatus::Ok;
+      }
 
     default:
       return ApduStatus::UnsupportedXdlmsService;
@@ -129,11 +297,39 @@ ApduStatus EncodeXdlmsApdu(
       break;
 
     case XdlmsApduKind::GetRequest:
-      status = EncodeGetRequestNormal(input.getRequest, writer);
+      status = IsGetRequestChoice(input.getRequestAny.choice)
+        ? EncodeGetRequest(input.getRequestAny, writer)
+        : EncodeGetRequestNormal(input.getRequest, writer);
       break;
 
     case XdlmsApduKind::GetResponse:
-      status = EncodeGetResponseNormal(input.getResponse, writer);
+      status = IsGetResponseChoice(input.getResponseAny.choice)
+        ? EncodeGetResponse(input.getResponseAny, writer)
+        : EncodeGetResponseNormal(input.getResponse, writer);
+      break;
+
+    case XdlmsApduKind::SetRequest:
+      status = IsSetRequestChoice(input.setRequestAny.choice)
+        ? EncodeSetRequest(input.setRequestAny, writer)
+        : EncodeSetRequestNormal(input.setRequest, writer);
+      break;
+
+    case XdlmsApduKind::SetResponse:
+      status = IsSetResponseChoice(input.setResponseAny.choice)
+        ? EncodeSetResponse(input.setResponseAny, writer)
+        : EncodeSetResponseNormal(input.setResponse, writer);
+      break;
+
+    case XdlmsApduKind::ActionRequest:
+      status = IsActionRequestChoice(input.actionRequestAny.choice)
+        ? EncodeActionRequest(input.actionRequestAny, writer)
+        : EncodeActionRequestNormal(input.actionRequest, writer);
+      break;
+
+    case XdlmsApduKind::ActionResponse:
+      status = IsActionResponseChoice(input.actionResponseAny.choice)
+        ? EncodeActionResponse(input.actionResponseAny, writer)
+        : EncodeActionResponseNormal(input.actionResponse, writer);
       break;
   }
 

@@ -2,6 +2,7 @@
 #define DLMS_APDU_DATA_HPP
 
 #include "dlms/apdu/apdu_error.hpp"
+#include "dlms/apdu/apdu_reader.hpp"
 #include "dlms/apdu/apdu_types.hpp"
 #include "dlms/apdu/apdu_writer.hpp"
 
@@ -42,6 +43,11 @@ struct DlmsData
 ApduStatus DecodeDlmsData(
   const std::uint8_t* input,
   std::size_t inputSize,
+  std::size_t maximumDepth,
+  DlmsData& output);
+
+ApduStatus DecodeDlmsDataFromReader(
+  ApduReader& reader,
   std::size_t maximumDepth,
   DlmsData& output);
 

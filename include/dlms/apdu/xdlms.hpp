@@ -2,8 +2,10 @@
 #define DLMS_APDU_XDLMS_HPP
 
 #include "dlms/apdu/apdu_error.hpp"
+#include "dlms/apdu/action.hpp"
 #include "dlms/apdu/get.hpp"
 #include "dlms/apdu/initiate.hpp"
+#include "dlms/apdu/set.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -29,7 +31,11 @@ enum class XdlmsApduKind
   InitiateRequest,
   InitiateResponse,
   GetRequest,
-  GetResponse
+  GetResponse,
+  SetRequest,
+  SetResponse,
+  ActionRequest,
+  ActionResponse
 };
 
 struct XdlmsApdu
@@ -39,6 +45,16 @@ struct XdlmsApdu
   InitiateResponse initiateResponse;
   GetRequestNormal getRequest;
   GetResponseNormal getResponse;
+  SetRequestNormal setRequest;
+  SetResponseNormal setResponse;
+  ActionRequestNormal actionRequest;
+  ActionResponseNormal actionResponse;
+  GetRequest getRequestAny;
+  GetResponse getResponseAny;
+  SetRequest setRequestAny;
+  SetResponse setResponseAny;
+  ActionRequest actionRequestAny;
+  ActionResponse actionResponseAny;
 
   XdlmsApdu();
   XdlmsApdu(const InitiateRequest& request);

@@ -229,7 +229,7 @@ ApduStatus DecodeDlmsData(
   }
 
   ApduReader reader(input, inputSize);
-  ApduStatus status = DecodeDlmsDataValue(reader, maximumDepth, output);
+  ApduStatus status = DecodeDlmsDataFromReader(reader, maximumDepth, output);
   if (status != ApduStatus::Ok) {
     return status;
   }
@@ -237,6 +237,14 @@ ApduStatus DecodeDlmsData(
     return ApduStatus::InvalidLength;
   }
   return ApduStatus::Ok;
+}
+
+ApduStatus DecodeDlmsDataFromReader(
+  ApduReader& reader,
+  std::size_t maximumDepth,
+  DlmsData& output)
+{
+  return DecodeDlmsDataValue(reader, maximumDepth, output);
 }
 
 ApduStatus EncodeDlmsData(
