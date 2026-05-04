@@ -1,176 +1,144 @@
 # APDU C++ codec API
 
-## API principles
+## Scope
 
-The C++ API is C++11-compatible and status-code based.
+The C++ API is a C++11 codec layer for DLMS/COSEM ACSE and xDLMS APDUs.
+It does not implement association state machines, object execution, security
+algorithms, retries or transport policy.
 
-Public functions must:
+Public functions return `ApduStatus`. They do not require exceptions for normal
+error reporting.
 
-```text
-return ApduStatus
-avoid exceptions in public API contracts
-accept explicit input sizes
-validate null pointers when size is non-zero
-preserve unsupported but recognized ciphered payloads as opaque bytes
-```
+## Ownership
 
-## Core types
+`ByteView` is a non-owning byte view:
 
 ```cpp
-namespace dlms {
-namespace apdu {
-
 struct ByteView
 {
   const std::uint8_t* data;
   std::size_t size;
 };
-
-struct ApduCodecLimits
-{
-  std::size_t maximumApduSize;
-  std::size_t maximumBerDepth;
-  std::size_t maximumAxdrDepth;
-  std::size_t maximumArrayElements;
-  std::size_t maximumStructureElements;
-  std::size_t maximumOctetStringSize;
-  std::size_t maximumRawDataBlockSize;
-};
-
-ApduCodecLimits DefaultApduCodecLimits();
-
-} // namespace apdu
-} // namespace dlms
 ```
 
-`ByteView` is non-owning. Callers own the referenced bytes and must keep them alive for the duration of the call.
+The caller owns the memory referenced by `ByteView`. Decoders may store
+`ByteView` values pointing into the input APDU buffer, so the input bytes must
+remain alive while the decoded object is inspected. Encoders copy bytes from
+views during the call and do not retain them after returning.
 
-## Top-level APDU model
+`std::vector` fields in decoded models own their elements. Nested `ByteView`
+fields inside those elements remain non-owning views into the original input.
 
-```cpp
-enum class AcseApduKind
-{
-  Aarq,
-  Aare,
-  Rlrq,
-  Rlre
-};
+## Error Statuses
 
-enum class XdlmsApduKind
-{
-  InitiateRequest,
-  InitiateResponse,
-  ConfirmedServiceError,
-  GetRequest,
-  GetResponse,
-  SetRequest,
-  SetResponse,
-  ActionRequest,
-  ActionResponse,
-  DataNotification,
-  ExceptionResponse,
-  GeneralGloCiphering,
-  GeneralDedCiphering,
-  GeneralCiphering,
-  UnknownCiphered
-};
+All public codecs use `ApduStatus`:
+
+```text
+Ok
+NeedMoreData
+OutputBufferTooSmall
+InvalidArgument
+InvalidTag
+InvalidLength
+InvalidBer
+InvalidAxdr
+InvalidChoice
+InvalidData
+InvalidInvokeId
+InvalidDescriptor
+InvalidConformance
+UnsupportedApdu
+UnsupportedAcseField
+UnsupportedXdlmsService
+UnsupportedDataType
+UnsupportedFeature
+PduTooLarge
+InternalError
 ```
 
-The first implemented model can use explicit structs per service. Avoid a speculative inheritance hierarchy. Add ownership only where tests and use cases require it.
+Pointer rules are consistent across decoders: `input == nullptr` is valid only
+when `inputSize == 0`. Empty input generally returns `NeedMoreData` for
+top-level dispatch and reader-level APIs.
 
-## Encoding APIs
+## ACSE API
 
-High-level API:
+`acse.hpp` exposes BER-encoded ACSE APDUs:
 
 ```cpp
-ApduStatus EncodeAcseApdu(
-  const AcseApdu& apdu,
-  std::vector<std::uint8_t>& output);
-
-ApduStatus EncodeXdlmsApdu(
-  const XdlmsApdu& apdu,
-  std::vector<std::uint8_t>& output);
+ApduStatus DecodeAarq(const std::uint8_t* input, std::size_t inputSize, AarqApdu& output);
+ApduStatus EncodeAarq(const AarqApdu& input, ApduWriter& writer);
+ApduStatus DecodeAare(const std::uint8_t* input, std::size_t inputSize, AareApdu& output);
+ApduStatus EncodeAare(const AareApdu& input, ApduWriter& writer);
+AcseApdu MakeAarqWithInitiateRequest(const XdlmsApdu& initiateRequest);
+ApduStatus DecodeAcseApdu(const std::uint8_t* input, std::size_t inputSize, AcseApdu& output);
+ApduStatus EncodeAcseApdu(const AcseApdu& input, std::vector<std::uint8_t>& output);
 ```
 
-Strict API:
+`DecodeAcseApdu` dispatches by ACSE tag. `EncodeAcseApdu` writes a complete
+BER APDU into an owning vector.
+
+## xDLMS API
+
+`xdlms.hpp` exposes top-level xDLMS dispatch:
 
 ```cpp
-ApduStatus EncodeAcseApduToBuffer(
-  const AcseApdu& apdu,
-  const ApduCodecLimits& limits,
-  std::uint8_t* output,
-  std::size_t outputSize,
-  std::size_t& writtenSize);
-
-ApduStatus EncodeXdlmsApduToBuffer(
-  const XdlmsApdu& apdu,
-  const ApduCodecLimits& limits,
-  std::uint8_t* output,
-  std::size_t outputSize,
-  std::size_t& writtenSize);
-```
-
-## Decoding APIs
-
-High-level API:
-
-```cpp
-ApduStatus DecodeAcseApdu(
-  const std::uint8_t* input,
-  std::size_t inputSize,
-  AcseApdu& output);
-
-ApduStatus DecodeXdlmsApdu(
-  const std::uint8_t* input,
-  std::size_t inputSize,
-  XdlmsApdu& output);
-```
-
-Strict API can decode to caller-provided storage where practical. Complex Data trees may initially stay C++ owning containers; C ABI can expose narrower raw decode entry points first.
-
-## Helper APIs
-
-The initial helper surface should be small:
-
-```cpp
-XdlmsApdu MakeDefaultInitiateRequest();
-
 XdlmsApdu MakeGetRequestNormal(
   std::uint8_t invokeIdAndPriority,
   std::uint16_t classId,
   const LogicalName& logicalName,
   std::uint8_t attributeId);
 
-AcseApdu MakeAarqWithInitiateRequest(
-  const XdlmsApdu& initiateRequest);
+ApduStatus DecodeXdlmsApdu(const std::uint8_t* input, std::size_t inputSize, XdlmsApdu& output);
+ApduStatus EncodeXdlmsApdu(const XdlmsApdu& input, std::vector<std::uint8_t>& output);
 ```
 
-Helpers should encode common valid APDUs only. They must not hide policy decisions like authentication mechanism selection or negotiated conformance.
+The dispatcher supports Initiate, GET, SET, ACTION and ciphered APDUs.
+Ciphered APDUs are represented as opaque `CipheredApdu { kind, tag, payload }`
+and are not decrypted.
 
-## Descriptor types
+## GET, SET And ACTION
 
-LN descriptors use fixed-size values:
+GET supports normal, next and with-list requests, and normal, datablock and
+with-list responses.
+
+SET supports normal, first-datablock, datablock, with-list and
+with-list-and-first-datablock requests, and all corresponding response choices.
+
+ACTION supports normal, next-pblock, with-list, first-pblock,
+list-and-first-pblock and pblock requests, plus normal, pblock, with-list and
+next-pblock responses.
+
+Normal legacy APIs are retained for simple callers:
 
 ```cpp
-struct LogicalName
-{
-  std::uint8_t value[6];
-};
-
-struct CosemAttributeDescriptor
-{
-  std::uint16_t classId;
-  LogicalName instanceId;
-  std::uint8_t attributeId;
-};
-
-struct CosemMethodDescriptor
-{
-  std::uint16_t classId;
-  LogicalName instanceId;
-  std::uint8_t methodId;
-};
+DecodeGetRequestNormal(...)
+EncodeGetRequestNormal(...)
+DecodeSetRequestNormal(...)
+EncodeSetRequestNormal(...)
+DecodeActionRequestNormal(...)
+EncodeActionRequestNormal(...)
 ```
 
-Class ids are encoded as big-endian unsigned 16-bit values. Logical name is exactly six bytes.
+Generic APIs should be used when block transfer, selective access or list forms
+are possible.
 
+## Data API
+
+`data.hpp` exposes A-XDR `Data` codec helpers:
+
+```cpp
+ApduStatus DecodeDlmsData(const std::uint8_t* input, std::size_t inputSize, std::size_t maximumDepth, DlmsData& output);
+ApduStatus DecodeDlmsDataFromReader(ApduReader& reader, std::size_t maximumDepth, DlmsData& output);
+ApduStatus EncodeDlmsData(const DlmsData& input, ApduWriter& writer);
+```
+
+`DecodeDlmsData` requires the whole input range to contain one complete DATA
+value. `DecodeDlmsDataFromReader` consumes exactly one DATA value and is used by
+list codecs.
+
+## Limits
+
+The current public API exposes per-call depth limits for DATA decoding. BER and
+A-XDR primitive readers validate malformed length encodings and buffer
+boundaries. Larger policy limits, such as maximum APDU size or session block
+transfer policy, belong to future higher-level client/session code.

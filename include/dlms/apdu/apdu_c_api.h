@@ -47,17 +47,48 @@ typedef enum dlms_apdu_xdlms_kind_t
 
 typedef struct dlms_apdu_xdlms_t
 {
+  /** Top-level xDLMS APDU kind decoded from the APDU tag. */
   dlms_apdu_xdlms_kind_t kind;
+
+  /** Top-level APDU tag byte. */
   uint8_t tag;
+
+  /**
+   * Non-owning payload view.
+   *
+   * For decode this points into the caller-provided input buffer after the
+   * top-level tag. For encode this pointer is copied during the call and is not
+   * retained after the function returns.
+   */
   const uint8_t* payload;
+
+  /** Number of bytes available through payload. */
   size_t payload_size;
 } dlms_apdu_xdlms_t;
 
+/**
+ * Decode an xDLMS APDU into a raw C ABI view.
+ *
+ * The output payload is non-owning and points into input. The caller must keep
+ * input alive while inspecting output.
+ *
+ * Returns INVALID_ARGUMENT for a null output pointer or for null input with a
+ * non-zero input_size. Returns NEED_MORE_DATA for empty input.
+ */
 dlms_apdu_status_t dlms_apdu_decode_xdlms(
   const uint8_t* input,
   size_t input_size,
   dlms_apdu_xdlms_t* output);
 
+/**
+ * Encode a raw xDLMS C ABI view into caller-provided storage.
+ *
+ * The encoded APDU is tag followed by payload bytes. written_size is set to
+ * zero before validation and remains zero on errors.
+ *
+ * Returns OUTPUT_BUFFER_TOO_SMALL when output_size is smaller than
+ * 1 + payload_size. Returns INVALID_ARGUMENT for null required pointers.
+ */
 dlms_apdu_status_t dlms_apdu_encode_xdlms(
   const dlms_apdu_xdlms_t* input,
   uint8_t* output,

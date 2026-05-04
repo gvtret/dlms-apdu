@@ -1,124 +1,114 @@
-# APDU C ABI requirements
+# APDU C ABI
 
 ## Goals
 
-The C ABI is a stable wrapper over the C++ implementation.
+The C ABI is a stable wrapper over the C++ implementation. It uses only C
+types, fixed enum values and caller-provided buffers.
 
-It must support:
+The ABI does not expose recursive C++ DATA trees. It provides a raw xDLMS APDU
+view first, which keeps the ABI small while the C++ typed model continues to
+evolve.
 
-```text
-C compilation
-fixed enum values
-fixed integer types
-caller-provided buffers
-no C++ types in public headers
-no exceptions crossing the ABI
-```
-
-## Files
+## Header
 
 ```text
 include/dlms/apdu/apdu_c_api.h
-src/apdu/apdu_c_api.cpp
-test/apdu/test_apdu_c_api.cpp
 ```
 
-## Status enum
+The header includes only `<stddef.h>` and `<stdint.h>` and is valid as C.
 
-The C status enum mirrors `ApduStatus` and keeps stable numeric values.
+## Status Values
 
-```c
-typedef enum dlms_apdu_status_t
-{
-  DLMS_APDU_STATUS_OK = 0,
-  DLMS_APDU_STATUS_NEED_MORE_DATA = 1,
-  DLMS_APDU_STATUS_OUTPUT_BUFFER_TOO_SMALL = 2,
-  DLMS_APDU_STATUS_INVALID_ARGUMENT = 3,
-  DLMS_APDU_STATUS_INVALID_TAG = 4,
-  DLMS_APDU_STATUS_INVALID_LENGTH = 5,
-  DLMS_APDU_STATUS_INVALID_BER = 6,
-  DLMS_APDU_STATUS_INVALID_AXDR = 7,
-  DLMS_APDU_STATUS_UNSUPPORTED_APDU = 8,
-  DLMS_APDU_STATUS_UNSUPPORTED_FEATURE = 9,
-  DLMS_APDU_STATUS_PDU_TOO_LARGE = 10,
-  DLMS_APDU_STATUS_INTERNAL_ERROR = 11
-} dlms_apdu_status_t;
+`dlms_apdu_status_t` mirrors `ApduStatus` and keeps stable numeric values:
+
+```text
+DLMS_APDU_STATUS_OK = 0
+DLMS_APDU_STATUS_NEED_MORE_DATA = 1
+DLMS_APDU_STATUS_OUTPUT_BUFFER_TOO_SMALL = 2
+DLMS_APDU_STATUS_INVALID_ARGUMENT = 3
+DLMS_APDU_STATUS_INVALID_TAG = 4
+DLMS_APDU_STATUS_INVALID_LENGTH = 5
+DLMS_APDU_STATUS_INVALID_BER = 6
+DLMS_APDU_STATUS_INVALID_AXDR = 7
+DLMS_APDU_STATUS_INVALID_CHOICE = 8
+DLMS_APDU_STATUS_INVALID_DATA = 9
+DLMS_APDU_STATUS_INVALID_INVOKE_ID = 10
+DLMS_APDU_STATUS_INVALID_DESCRIPTOR = 11
+DLMS_APDU_STATUS_INVALID_CONFORMANCE = 12
+DLMS_APDU_STATUS_UNSUPPORTED_APDU = 13
+DLMS_APDU_STATUS_UNSUPPORTED_ACSE_FIELD = 14
+DLMS_APDU_STATUS_UNSUPPORTED_XDLMS_SERVICE = 15
+DLMS_APDU_STATUS_UNSUPPORTED_DATA_TYPE = 16
+DLMS_APDU_STATUS_UNSUPPORTED_FEATURE = 17
+DLMS_APDU_STATUS_PDU_TOO_LARGE = 18
+DLMS_APDU_STATUS_INTERNAL_ERROR = 19
 ```
 
-The exact final list is fixed during status-model implementation and covered by tests.
-
-## Minimal data structures
-
-The first C ABI should avoid exposing a recursive Data tree until the C++ model is stable.
-
-Use raw APDU views and small typed headers first:
+## xDLMS View
 
 ```c
-typedef struct dlms_apdu_byte_view_t
+typedef struct dlms_apdu_xdlms_t
 {
-  const uint8_t* data;
-  size_t size;
-} dlms_apdu_byte_view_t;
-
-typedef struct dlms_apdu_buffer_t
-{
-  uint8_t* data;
-  size_t size;
-  size_t written_size;
-} dlms_apdu_buffer_t;
+  dlms_apdu_xdlms_kind_t kind;
+  uint8_t tag;
+  const uint8_t* payload;
+  size_t payload_size;
+} dlms_apdu_xdlms_t;
 ```
 
-## Minimal functions
+`payload` is non-owning. After `dlms_apdu_decode_xdlms`, it points into the
+input buffer after the top-level APDU tag. The caller must keep the input bytes
+alive while the view is used.
+
+For encoding, `payload` is copied during the call. The encoder does not retain
+the pointer after returning.
+
+## Functions
 
 ```c
-dlms_apdu_status_t dlms_apdu_decode_xdlms_kind(
+dlms_apdu_status_t dlms_apdu_decode_xdlms(
   const uint8_t* input,
   size_t input_size,
-  uint32_t* kind);
+  dlms_apdu_xdlms_t* output);
 ```
 
+Decodes enough of an xDLMS APDU to identify the top-level kind and expose the
+raw payload. The C++ typed decoder is used internally for validation.
+
 ```c
-dlms_apdu_status_t dlms_apdu_encode_xdlms_raw(
-  uint32_t kind,
-  const uint8_t* body,
-  size_t body_size,
+dlms_apdu_status_t dlms_apdu_encode_xdlms(
+  const dlms_apdu_xdlms_t* input,
   uint8_t* output,
   size_t output_size,
   size_t* written_size);
 ```
 
-```c
-dlms_apdu_status_t dlms_apdu_decode_acse_kind(
-  const uint8_t* input,
-  size_t input_size,
-  uint32_t* kind);
-```
+Encodes `tag + payload` into the caller-provided output buffer.
 
-More typed C functions can be added after the C++ model for Initiate and GET is implemented and tested.
+## Validation
 
-## Validation rules
-
-Every C ABI function must:
+The C ABI returns:
 
 ```text
-return INVALID_ARGUMENT for null required output pointers
-return INVALID_ARGUMENT for null input pointer with non-zero size
-return OUTPUT_BUFFER_TOO_SMALL before writing past output_size
-set written_size only on success or well-defined size-query paths
-catch all C++ exceptions internally and convert them to INTERNAL_ERROR
+INVALID_ARGUMENT for null required pointers
+INVALID_ARGUMENT for null input with non-zero input_size
+NEED_MORE_DATA for empty input decode
+INVALID_ARGUMENT for null payload with non-zero payload_size
+OUTPUT_BUFFER_TOO_SMALL when output_size is insufficient
+INTERNAL_ERROR for unexpected C++ exceptions
 ```
+
+`written_size` is set to zero before encode validation and remains zero on
+errors.
 
 ## Tests
 
-Required C ABI tests:
+C ABI coverage includes:
 
 ```text
 header compiles as C
-status values match documented order
-decode rejects null input/output
-encode rejects null output
-small output buffer is reported
-basic xDLMS kind decode works
-basic ACSE kind decode works
+raw xDLMS decode view
+raw xDLMS encode view
+small output buffer
+null argument validation
 ```
-
