@@ -2,6 +2,7 @@
 #define DLMS_APDU_XDLMS_HPP
 
 #include "dlms/apdu/apdu_error.hpp"
+#include "dlms/apdu/apdu_types.hpp"
 #include "dlms/apdu/action.hpp"
 #include "dlms/apdu/get.hpp"
 #include "dlms/apdu/initiate.hpp"
@@ -35,7 +36,23 @@ enum class XdlmsApduKind
   SetRequest,
   SetResponse,
   ActionRequest,
-  ActionResponse
+  ActionResponse,
+  Ciphered
+};
+
+enum class CipheredApduKind
+{
+  ServiceSpecific,
+  GeneralGloCiphering,
+  GeneralDedCiphering,
+  GeneralCiphering
+};
+
+struct CipheredApdu
+{
+  CipheredApduKind kind;
+  std::uint8_t tag;
+  ByteView payload;
 };
 
 struct XdlmsApdu
@@ -55,6 +72,7 @@ struct XdlmsApdu
   SetResponse setResponseAny;
   ActionRequest actionRequestAny;
   ActionResponse actionResponseAny;
+  CipheredApdu ciphered;
 
   XdlmsApdu();
   XdlmsApdu(const InitiateRequest& request);

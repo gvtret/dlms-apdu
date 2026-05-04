@@ -11,6 +11,8 @@ endif()
 
 add_executable(dlms_apdu_tests
   apdu/test_acse.cpp
+  apdu/test_apdu_c_api.cpp
+  apdu/test_apdu_c_header.c
   apdu/test_action.cpp
   apdu/test_apdu_error.cpp
   apdu/test_ber.cpp
@@ -19,6 +21,7 @@ add_executable(dlms_apdu_tests
   apdu/test_get.cpp
   apdu/test_initiate.cpp
   apdu/test_set.cpp
+  apdu/test_xdlms.cpp
   apdu/test_apdu_reader.cpp
   apdu/test_apdu_writer.cpp
   apdu/test_apdu_skeleton.cpp)

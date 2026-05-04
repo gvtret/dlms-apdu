@@ -15,6 +15,23 @@ constexpr std::uint8_t kActionRequestTag = 0xC3;
 constexpr std::uint8_t kGetResponseTag = 0xC4;
 constexpr std::uint8_t kSetResponseTag = 0xC5;
 constexpr std::uint8_t kActionResponseTag = 0xC7;
+constexpr std::uint8_t kGloGetRequestTag = 0xC8;
+constexpr std::uint8_t kGloSetRequestTag = 0xC9;
+constexpr std::uint8_t kGloEventNotificationRequestTag = 0xCA;
+constexpr std::uint8_t kGloActionRequestTag = 0xCB;
+constexpr std::uint8_t kGloGetResponseTag = 0xCC;
+constexpr std::uint8_t kGloSetResponseTag = 0xCD;
+constexpr std::uint8_t kGloActionResponseTag = 0xCF;
+constexpr std::uint8_t kDedGetRequestTag = 0xD0;
+constexpr std::uint8_t kDedSetRequestTag = 0xD1;
+constexpr std::uint8_t kDedEventNotificationRequestTag = 0xD2;
+constexpr std::uint8_t kDedActionRequestTag = 0xD3;
+constexpr std::uint8_t kDedGetResponseTag = 0xD4;
+constexpr std::uint8_t kDedSetResponseTag = 0xD5;
+constexpr std::uint8_t kDedActionResponseTag = 0xD7;
+constexpr std::uint8_t kGeneralGloCipheringTag = 0xDB;
+constexpr std::uint8_t kGeneralDedCipheringTag = 0xDC;
+constexpr std::uint8_t kGeneralCipheringTag = 0xDD;
 
 ApduStatus WriteVectorResult(
   ApduStatus status,
@@ -79,6 +96,46 @@ bool IsActionResponseChoice(ActionResponseChoice choice)
     choice == ActionResponseChoice::NextPblock;
 }
 
+bool IsServiceSpecificCipheredTag(std::uint8_t tag)
+{
+  return tag == kGloGetRequestTag ||
+    tag == kGloSetRequestTag ||
+    tag == kGloEventNotificationRequestTag ||
+    tag == kGloActionRequestTag ||
+    tag == kGloGetResponseTag ||
+    tag == kGloSetResponseTag ||
+    tag == kGloActionResponseTag ||
+    tag == kDedGetRequestTag ||
+    tag == kDedSetRequestTag ||
+    tag == kDedEventNotificationRequestTag ||
+    tag == kDedActionRequestTag ||
+    tag == kDedGetResponseTag ||
+    tag == kDedSetResponseTag ||
+    tag == kDedActionResponseTag;
+}
+
+bool IsCipheredTag(std::uint8_t tag)
+{
+  return IsServiceSpecificCipheredTag(tag) ||
+    tag == kGeneralGloCipheringTag ||
+    tag == kGeneralDedCipheringTag ||
+    tag == kGeneralCipheringTag;
+}
+
+CipheredApduKind CipheredKindFromTag(std::uint8_t tag)
+{
+  if (tag == kGeneralGloCipheringTag) {
+    return CipheredApduKind::GeneralGloCiphering;
+  }
+  if (tag == kGeneralDedCipheringTag) {
+    return CipheredApduKind::GeneralDedCiphering;
+  }
+  if (tag == kGeneralCipheringTag) {
+    return CipheredApduKind::GeneralCiphering;
+  }
+  return CipheredApduKind::ServiceSpecific;
+}
+
 } // namespace
 
 LogicalName::LogicalName(
@@ -113,6 +170,7 @@ XdlmsApdu::XdlmsApdu()
   , setResponseAny()
   , actionRequestAny()
   , actionResponseAny()
+  , ciphered()
 {
 }
 
@@ -132,6 +190,7 @@ XdlmsApdu::XdlmsApdu(const InitiateRequest& request)
   , setResponseAny()
   , actionRequestAny()
   , actionResponseAny()
+  , ciphered()
 {
 }
 
@@ -275,6 +334,14 @@ ApduStatus DecodeXdlmsApdu(
       }
 
     default:
+      if (IsCipheredTag(input[0])) {
+        output.kind = XdlmsApduKind::Ciphered;
+        output.ciphered.kind = CipheredKindFromTag(input[0]);
+        output.ciphered.tag = input[0];
+        output.ciphered.payload.data = input + 1;
+        output.ciphered.payload.size = inputSize - 1U;
+        return ApduStatus::Ok;
+      }
       return ApduStatus::UnsupportedXdlmsService;
   }
 }
@@ -330,6 +397,17 @@ ApduStatus EncodeXdlmsApdu(
       status = IsActionResponseChoice(input.actionResponseAny.choice)
         ? EncodeActionResponse(input.actionResponseAny, writer)
         : EncodeActionResponseNormal(input.actionResponse, writer);
+      break;
+
+    case XdlmsApduKind::Ciphered:
+      if (!IsCipheredTag(input.ciphered.tag)) {
+        status = ApduStatus::UnsupportedXdlmsService;
+        break;
+      }
+      status = writer.WriteU8(input.ciphered.tag);
+      if (status == ApduStatus::Ok) {
+        status = writer.WriteBytes(input.ciphered.payload.data, input.ciphered.payload.size);
+      }
       break;
   }
 
