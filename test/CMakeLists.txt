@@ -23,8 +23,7 @@ add_executable(dlms_apdu_tests
   apdu/test_set.cpp
   apdu/test_xdlms.cpp
   apdu/test_apdu_reader.cpp
-  apdu/test_apdu_writer.cpp
-  apdu/test_apdu_skeleton.cpp)
+  apdu/test_apdu_writer.cpp)
 
 target_link_libraries(dlms_apdu_tests
   PRIVATE

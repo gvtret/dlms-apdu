@@ -919,7 +919,7 @@ ctest --test-dir build
 Commit message:
 
 ```text
-build(apdu): add project skeleton and test harness
+build(apdu): add project structure and test harness
 ```
 
 ---
@@ -1364,9 +1364,9 @@ SN referencing implementation
 4. docs/03_acse_ber_requirements.md
 5. docs/04_xdlms_axdr_requirements.md
 6. docs/05_apdu_test_plan.md
-7. CMake skeleton
+7. CMake project structure
 8. empty library target
-9. GoogleTest skeleton
+9. GoogleTest harness
 10. ApduStatus + reader/writer
 ```
 
