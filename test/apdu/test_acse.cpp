@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace {
 
@@ -14,8 +15,14 @@ using dlms::apdu::ApduStatus;
 using dlms::apdu::ApduWriter;
 using dlms::apdu::DecodeAare;
 using dlms::apdu::DecodeAarq;
+using dlms::apdu::DecodeAcseApdu;
+using dlms::apdu::DecodeRlre;
+using dlms::apdu::DecodeRlrq;
 using dlms::apdu::EncodeAare;
 using dlms::apdu::EncodeAarq;
+using dlms::apdu::EncodeAcseApdu;
+using dlms::apdu::EncodeRlre;
+using dlms::apdu::EncodeRlrq;
 
 constexpr std::array<std::uint8_t, 68> kSpodesAarq = {
   0x60, 0x42, 0x80, 0x02, 0x02, 0x84, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85,
@@ -120,4 +127,82 @@ TEST(AcseTest, EncodeAarqRejectsRawUserInformationField)
   ApduWriter writer(output.data(), output.size());
 
   EXPECT_EQ(EncodeAarq(aarq, writer), ApduStatus::InvalidArgument);
+}
+
+TEST(AcseTest, DecodeEmptyRlrq)
+{
+  const std::array<std::uint8_t, 2> input = {0x62, 0x00};
+  dlms::apdu::RlrqApdu rlrq = {};
+
+  EXPECT_EQ(DecodeRlrq(input.data(), input.size(), rlrq), ApduStatus::Ok);
+  EXPECT_FALSE(rlrq.hasReason);
+  EXPECT_TRUE(rlrq.fields.empty());
+}
+
+TEST(AcseTest, EncodeEmptyRlrq)
+{
+  dlms::apdu::RlrqApdu rlrq = {};
+  std::array<std::uint8_t, 8> output = {};
+  ApduWriter writer(output.data(), output.size());
+
+  EXPECT_EQ(EncodeRlrq(rlrq, writer), ApduStatus::Ok);
+  ASSERT_EQ(writer.WrittenSize(), 2U);
+  EXPECT_EQ(output[0], 0x62);
+  EXPECT_EQ(output[1], 0x00);
+}
+
+TEST(AcseTest, DecodeRlreWithReason)
+{
+  const std::array<std::uint8_t, 5> input = {0x63, 0x03, 0x80, 0x01, 0x00};
+  dlms::apdu::RlreApdu rlre = {};
+
+  EXPECT_EQ(DecodeRlre(input.data(), input.size(), rlre), ApduStatus::Ok);
+  EXPECT_TRUE(rlre.hasReason);
+  EXPECT_EQ(rlre.reason, 0);
+  ASSERT_EQ(rlre.fields.size(), 1U);
+  EXPECT_EQ(rlre.fields[0].tag, 0x80);
+}
+
+TEST(AcseTest, EncodeRlreWithReason)
+{
+  dlms::apdu::RlreApdu rlre = {};
+  rlre.hasReason = true;
+  rlre.reason = 0;
+
+  std::array<std::uint8_t, 8> output = {};
+  ApduWriter writer(output.data(), output.size());
+
+  EXPECT_EQ(EncodeRlre(rlre, writer), ApduStatus::Ok);
+  ASSERT_EQ(writer.WrittenSize(), 5U);
+  EXPECT_EQ(output[0], 0x63);
+  EXPECT_EQ(output[1], 0x03);
+  EXPECT_EQ(output[2], 0x80);
+  EXPECT_EQ(output[3], 0x01);
+  EXPECT_EQ(output[4], 0x00);
+}
+
+TEST(AcseTest, DecodeAcseApduRecognizesReleaseApdus)
+{
+  const std::array<std::uint8_t, 2> rlrqBytes = {0x62, 0x00};
+  const std::array<std::uint8_t, 2> rlreBytes = {0x63, 0x00};
+  dlms::apdu::AcseApdu apdu = {};
+
+  ASSERT_EQ(DecodeAcseApdu(rlrqBytes.data(), rlrqBytes.size(), apdu),
+            ApduStatus::Ok);
+  EXPECT_EQ(apdu.kind, dlms::apdu::AcseApduKind::Rlrq);
+
+  ASSERT_EQ(DecodeAcseApdu(rlreBytes.data(), rlreBytes.size(), apdu),
+            ApduStatus::Ok);
+  EXPECT_EQ(apdu.kind, dlms::apdu::AcseApduKind::Rlre);
+}
+
+TEST(AcseTest, EncodeAcseApduWritesRlrq)
+{
+  const dlms::apdu::AcseApdu apdu = dlms::apdu::MakeRlrq();
+  std::vector<std::uint8_t> output;
+
+  ASSERT_EQ(EncodeAcseApdu(apdu, output), ApduStatus::Ok);
+  ASSERT_EQ(output.size(), 2U);
+  EXPECT_EQ(output[0], 0x62);
+  EXPECT_EQ(output[1], 0x00);
 }

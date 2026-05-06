@@ -11,12 +11,15 @@ namespace {
 
 constexpr std::uint8_t kAarqTag = 0x60;
 constexpr std::uint8_t kAareTag = 0x61;
+constexpr std::uint8_t kRlrqTag = 0x62;
+constexpr std::uint8_t kRlreTag = 0x63;
 constexpr std::uint8_t kUserInformationTag = 0xBE;
 constexpr std::uint8_t kOctetStringTag = 0x04;
 constexpr std::uint8_t kAssociationResultTag = 0xA2;
 constexpr std::uint8_t kResultSourceDiagnosticTag = 0xA3;
 constexpr std::uint8_t kAcseServiceUserTag = 0xA1;
 constexpr std::uint8_t kBerIntegerTag = 0x02;
+constexpr std::uint8_t kReleaseReasonTag = 0x80;
 
 ByteView MakeView(const std::uint8_t* data, std::size_t size)
 {
@@ -75,6 +78,23 @@ ApduStatus ReadIntegerValue(BerTlv integerTlv, std::int32_t& value)
   if (integerTlv.tag != kBerIntegerTag) {
     return ApduStatus::InvalidTag;
   }
+  if (integerTlv.valueSize == 0 || integerTlv.valueSize > 4) {
+    return ApduStatus::InvalidLength;
+  }
+
+  std::int32_t result = 0;
+  for (std::size_t i = 0; i < integerTlv.valueSize; ++i) {
+    result = (result << 8) | integerTlv.value[i];
+  }
+  if ((integerTlv.value[0] & 0x80U) != 0U && integerTlv.valueSize < 4) {
+    result |= static_cast<std::int32_t>(-1) << (integerTlv.valueSize * 8U);
+  }
+  value = result;
+  return ApduStatus::Ok;
+}
+
+ApduStatus ReadPrimitiveIntegerValue(BerTlv integerTlv, std::int32_t& value)
+{
   if (integerTlv.valueSize == 0 || integerTlv.valueSize > 4) {
     return ApduStatus::InvalidLength;
   }
@@ -174,6 +194,84 @@ ApduStatus EncodeAssociation(
   if (status != ApduStatus::Ok) {
     return status;
   }
+  return WriteBerTlv(writer, tag, value, valueWriter.WrittenSize());
+}
+
+ApduStatus WriteReleaseReason(std::int32_t reason, ApduWriter& writer)
+{
+  if (reason < -128 || reason > 127) {
+    return ApduStatus::UnsupportedFeature;
+  }
+
+  const std::uint8_t value = static_cast<std::uint8_t>(reason & 0xff);
+  return WriteBerTlv(writer, kReleaseReasonTag, &value, 1);
+}
+
+template <typename T>
+ApduStatus DecodeRelease(
+  const std::uint8_t* input,
+  std::size_t inputSize,
+  std::uint8_t expectedTag,
+  T& output)
+{
+  output = {};
+
+  BerTlv release = {};
+  ApduStatus status = ReadSingleTlv(input, inputSize, expectedTag, release);
+  if (status != ApduStatus::Ok) {
+    return status;
+  }
+
+  ApduReader reader(release.value, release.valueSize);
+  while (!reader.Empty()) {
+    const std::size_t elementStart = reader.Position();
+    BerTlv child = {};
+    status = ReadBerTlv(reader, child);
+    if (status != ApduStatus::Ok) {
+      return status;
+    }
+    const std::size_t elementSize = reader.Position() - elementStart;
+
+    if (child.tag == kReleaseReasonTag) {
+      status = ReadPrimitiveIntegerValue(child, output.reason);
+      if (status != ApduStatus::Ok) {
+        return status;
+      }
+      output.hasReason = true;
+    }
+
+    output.fields.push_back(
+      AcseRawField{child.tag, MakeView(release.value + elementStart, elementSize)});
+  }
+
+  return ApduStatus::Ok;
+}
+
+template <typename T>
+ApduStatus EncodeRelease(
+  std::uint8_t tag,
+  const T& input,
+  ApduWriter& writer)
+{
+  std::uint8_t value[256] = {};
+  ApduWriter valueWriter(value, sizeof(value));
+  for (std::size_t i = 0; i < input.fields.size(); ++i) {
+    if (input.fields[i].tag == kReleaseReasonTag && input.hasReason) {
+      continue;
+    }
+    ApduStatus status = CopyRawField(input.fields[i], valueWriter);
+    if (status != ApduStatus::Ok) {
+      return status;
+    }
+  }
+
+  if (input.hasReason) {
+    const ApduStatus status = WriteReleaseReason(input.reason, valueWriter);
+    if (status != ApduStatus::Ok) {
+      return status;
+    }
+  }
+
   return WriteBerTlv(writer, tag, value, valueWriter.WrittenSize());
 }
 
@@ -323,11 +421,48 @@ ApduStatus EncodeAare(
     writer);
 }
 
+ApduStatus DecodeRlrq(
+  const std::uint8_t* input,
+  std::size_t inputSize,
+  RlrqApdu& output)
+{
+  return DecodeRelease(input, inputSize, kRlrqTag, output);
+}
+
+ApduStatus EncodeRlrq(
+  const RlrqApdu& input,
+  ApduWriter& writer)
+{
+  return EncodeRelease(kRlrqTag, input, writer);
+}
+
+ApduStatus DecodeRlre(
+  const std::uint8_t* input,
+  std::size_t inputSize,
+  RlreApdu& output)
+{
+  return DecodeRelease(input, inputSize, kRlreTag, output);
+}
+
+ApduStatus EncodeRlre(
+  const RlreApdu& input,
+  ApduWriter& writer)
+{
+  return EncodeRelease(kRlreTag, input, writer);
+}
+
 AcseApdu MakeAarqWithInitiateRequest(const XdlmsApdu& initiateRequest)
 {
   AcseApdu apdu = {};
   apdu.kind = AcseApduKind::Aarq;
   apdu.aarq.initiateRequest = initiateRequest.initiateRequest;
+  return apdu;
+}
+
+AcseApdu MakeRlrq()
+{
+  AcseApdu apdu = {};
+  apdu.kind = AcseApduKind::Rlrq;
   return apdu;
 }
 
@@ -349,6 +484,14 @@ ApduStatus DecodeAcseApdu(
     output.kind = AcseApduKind::Aare;
     return DecodeAare(input, inputSize, output.aare);
   }
+  if (input[0] == kRlrqTag) {
+    output.kind = AcseApduKind::Rlrq;
+    return DecodeRlrq(input, inputSize, output.rlrq);
+  }
+  if (input[0] == kRlreTag) {
+    output.kind = AcseApduKind::Rlre;
+    return DecodeRlre(input, inputSize, output.rlre);
+  }
   return ApduStatus::InvalidTag;
 }
 
@@ -367,6 +510,14 @@ ApduStatus EncodeAcseApdu(
 
     case AcseApduKind::Aare:
       status = EncodeAare(input.aare, writer);
+      break;
+
+    case AcseApduKind::Rlrq:
+      status = EncodeRlrq(input.rlrq, writer);
+      break;
+
+    case AcseApduKind::Rlre:
+      status = EncodeRlre(input.rlre, writer);
       break;
   }
 

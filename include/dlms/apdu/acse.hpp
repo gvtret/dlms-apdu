@@ -34,12 +34,28 @@ struct AareApdu
   InitiateResponse initiateResponse;
 };
 
+struct RlrqApdu
+{
+  std::vector<AcseRawField> fields;
+  bool hasReason;
+  std::int32_t reason;
+};
+
+struct RlreApdu
+{
+  std::vector<AcseRawField> fields;
+  bool hasReason;
+  std::int32_t reason;
+};
+
 struct XdlmsApdu;
 
 enum class AcseApduKind
 {
   Aarq,
-  Aare
+  Aare,
+  Rlrq,
+  Rlre
 };
 
 struct AcseApdu
@@ -47,6 +63,8 @@ struct AcseApdu
   AcseApduKind kind;
   AarqApdu aarq;
   AareApdu aare;
+  RlrqApdu rlrq;
+  RlreApdu rlre;
 };
 
 ApduStatus DecodeAarq(
@@ -67,7 +85,27 @@ ApduStatus EncodeAare(
   const AareApdu& input,
   ApduWriter& writer);
 
+ApduStatus DecodeRlrq(
+  const std::uint8_t* input,
+  std::size_t inputSize,
+  RlrqApdu& output);
+
+ApduStatus EncodeRlrq(
+  const RlrqApdu& input,
+  ApduWriter& writer);
+
+ApduStatus DecodeRlre(
+  const std::uint8_t* input,
+  std::size_t inputSize,
+  RlreApdu& output);
+
+ApduStatus EncodeRlre(
+  const RlreApdu& input,
+  ApduWriter& writer);
+
 AcseApdu MakeAarqWithInitiateRequest(const XdlmsApdu& initiateRequest);
+
+AcseApdu MakeRlrq();
 
 ApduStatus DecodeAcseApdu(
   const std::uint8_t* input,
