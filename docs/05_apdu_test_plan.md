@@ -66,6 +66,11 @@ DecodeAarq_withUserInformation
 EncodeAarq_roundtrip
 DecodeAare_acceptWithInitiateResponse
 DecodeAare_rejectWithConfirmedServiceError
+DecodeRlrq_emptyReleaseRequest
+EncodeRlrq_emptyReleaseRequest
+DecodeRlre_withReleaseReason
+EncodeRlre_withReleaseReason
+DecodeAcse_dispatchReleaseApdus
 DecodeAarq_withAuthenticationValue
 RejectAarq_invalidUserInformationOctetString
 RejectAcse_truncatedBer
@@ -168,4 +173,3 @@ payload byte 0x7E inside APDU survives lower layers
 ```
 
 The APDU integration target must be gated by `DLMS_APDU_HAS_CODEC_API` and `TARGET dlms_apdu` until the APDU codec exists.
-

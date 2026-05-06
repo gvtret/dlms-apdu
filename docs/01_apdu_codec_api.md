@@ -69,13 +69,22 @@ ApduStatus DecodeAarq(const std::uint8_t* input, std::size_t inputSize, AarqApdu
 ApduStatus EncodeAarq(const AarqApdu& input, ApduWriter& writer);
 ApduStatus DecodeAare(const std::uint8_t* input, std::size_t inputSize, AareApdu& output);
 ApduStatus EncodeAare(const AareApdu& input, ApduWriter& writer);
+ApduStatus DecodeRlrq(const std::uint8_t* input, std::size_t inputSize, RlrqApdu& output);
+ApduStatus EncodeRlrq(const RlrqApdu& input, ApduWriter& writer);
+ApduStatus DecodeRlre(const std::uint8_t* input, std::size_t inputSize, RlreApdu& output);
+ApduStatus EncodeRlre(const RlreApdu& input, ApduWriter& writer);
 AcseApdu MakeAarqWithInitiateRequest(const XdlmsApdu& initiateRequest);
+AcseApdu MakeRlrq();
 ApduStatus DecodeAcseApdu(const std::uint8_t* input, std::size_t inputSize, AcseApdu& output);
 ApduStatus EncodeAcseApdu(const AcseApdu& input, std::vector<std::uint8_t>& output);
 ```
 
 `DecodeAcseApdu` dispatches by ACSE tag. `EncodeAcseApdu` writes a complete
 BER APDU into an owning vector.
+
+RLRQ/RLRE are codec-only release APDUs. The APDU layer encodes and decodes
+their BER envelopes and optional release reason fields; association state,
+fallback close policy, and retries belong to higher layers.
 
 ## xDLMS API
 
