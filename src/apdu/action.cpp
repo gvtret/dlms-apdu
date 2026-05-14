@@ -112,6 +112,36 @@ ApduStatus DecodeOptionalData(
   return DecodeDlmsDataFromReader(reader, maximumDataDepth, data);
 }
 
+ApduStatus DecodeOptionalActionReturnParameter(
+  ApduReader& reader,
+  std::size_t maximumDataDepth,
+  bool& present,
+  DlmsData& data)
+{
+  std::uint8_t flag = 0;
+  ApduStatus status = reader.ReadU8(flag);
+  if (status != ApduStatus::Ok) {
+    return status;
+  }
+  if (flag > 1U) {
+    return ApduStatus::InvalidChoice;
+  }
+  present = flag != 0U;
+  if (!present) {
+    return ApduStatus::Ok;
+  }
+
+  std::uint8_t choice = 0;
+  status = reader.ReadU8(choice);
+  if (status != ApduStatus::Ok) {
+    return status;
+  }
+  if (choice != 0U) {
+    return ApduStatus::UnsupportedXdlmsService;
+  }
+  return DecodeDlmsDataFromReader(reader, maximumDataDepth, data);
+}
+
 ApduStatus EncodeOptionalData(
   bool present,
   const DlmsData& data,
@@ -119,6 +149,22 @@ ApduStatus EncodeOptionalData(
 {
   ApduStatus status = writer.WriteU8(present ? 0x01 : 0x00);
   if (status != ApduStatus::Ok || !present) {
+    return status;
+  }
+  return EncodeDlmsData(data, writer);
+}
+
+ApduStatus EncodeOptionalActionReturnParameter(
+  bool present,
+  const DlmsData& data,
+  ApduWriter& writer)
+{
+  ApduStatus status = writer.WriteU8(present ? 0x01 : 0x00);
+  if (status != ApduStatus::Ok || !present) {
+    return status;
+  }
+  status = writer.WriteU8(0x00);
+  if (status != ApduStatus::Ok) {
     return status;
   }
   return EncodeDlmsData(data, writer);
@@ -163,7 +209,7 @@ ApduStatus DecodeResponseItem(
   if (status != ApduStatus::Ok) {
     return status;
   }
-  return DecodeOptionalData(
+  return DecodeOptionalActionReturnParameter(
     reader,
     maximumDataDepth,
     output.hasReturnParameter,
@@ -178,7 +224,10 @@ ApduStatus EncodeResponseItem(
   if (status != ApduStatus::Ok) {
     return status;
   }
-  return EncodeOptionalData(input.hasReturnParameter, input.returnParameter, writer);
+  return EncodeOptionalActionReturnParameter(
+    input.hasReturnParameter,
+    input.returnParameter,
+    writer);
 }
 
 } // namespace
@@ -299,7 +348,7 @@ ApduStatus DecodeActionResponseNormal(
     return status;
   }
 
-  status = DecodeOptionalData(
+  status = DecodeOptionalActionReturnParameter(
     reader,
     maximumDataDepth,
     output.hasReturnParameter,
@@ -330,7 +379,10 @@ ApduStatus EncodeActionResponseNormal(
   if (status != ApduStatus::Ok) {
     return status;
   }
-  return EncodeOptionalData(input.hasReturnParameter, input.returnParameter, writer);
+  return EncodeOptionalActionReturnParameter(
+    input.hasReturnParameter,
+    input.returnParameter,
+    writer);
 }
 
 ApduStatus DecodeActionRequest(
